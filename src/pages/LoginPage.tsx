@@ -129,6 +129,12 @@ export const LoginPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-3 text-xs">
           <Link
+            to="/"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-forest-800 hover:text-forest-950 hover:bg-forest-50 border border-transparent hover:border-forest-100 font-medium transition"
+          >
+            ← Back to website
+          </Link>
+          <Link
             to="/farmer/login"
             className="px-3 py-1.5 rounded-xl bg-forest-900 hover:bg-forest-800 text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 transition flex items-center gap-1.5 font-medium"
           >

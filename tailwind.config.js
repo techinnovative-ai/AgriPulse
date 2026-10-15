@@ -67,6 +67,19 @@ export default {
           800: '#6F471F',
           900: '#5A3B1E',
         },
+        /* Semantic blue: water, weather and informational states. */
+        water: {
+          50: '#EEF6F8',
+          100: '#D9EBF0',
+          200: '#B6D8E2',
+          300: '#86BDCD',
+          400: '#5AA4C4',
+          500: '#3F8394',
+          600: '#336E7E',
+          700: '#2A5967',
+          800: '#234A56',
+          900: '#1D3C46',
+        },
         warmbg: '#F4F7F0',
       },
       fontFamily: {

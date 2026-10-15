@@ -124,6 +124,12 @@ export const FarmerLoginPage: React.FC = () => {
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs">
+          <Link
+            to="/"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-forest-800 hover:text-forest-950 hover:bg-forest-50 border border-transparent hover:border-forest-100 font-medium transition"
+          >
+            ← Back to website
+          </Link>
           {DEMO_MODE_ENABLED && <button
             type="button"
             onClick={handleInstantDemoSeller}
@@ -155,8 +161,8 @@ export const FarmerLoginPage: React.FC = () => {
           </h1>
 
           <p className="text-base text-forest-800 leading-relaxed">
-            Monitor crop stress across your plots, study 100 crop diseases with 25-heading pathology
-            dossiers, get hyper-local weather alerts, and purchase certified agricultural inputs.
+            Track zone status and sensor readings, follow rule-based crop-stress and irrigation guidance,
+            study the 100-disease reference library, and plan field work in one place.
           </p>
 
           {/* Quick Feature Pillars */}
@@ -164,7 +170,7 @@ export const FarmerLoginPage: React.FC = () => {
             <div className="rounded-xl bg-white border border-forest-100 p-3.5 shadow-xs">
               <Tractor className="w-5 h-5 text-leaf-600 mb-1.5" />
               <h2 className="text-xs font-bold text-forest-950">Field Digital Twin</h2>
-              <p className="text-[11px] text-forest-700 mt-0.5">Plot NDVI & growth tracking</p>
+              <p className="text-[11px] text-forest-700 mt-0.5">Zone status, sensor readings & crop-stress rules</p>
             </div>
             <div className="rounded-xl bg-white border border-forest-100 p-3.5 shadow-xs">
               <BookOpen className="w-5 h-5 text-leaf-600 mb-1.5" />
@@ -174,7 +180,7 @@ export const FarmerLoginPage: React.FC = () => {
             <div className="rounded-xl bg-white border border-forest-100 p-3.5 shadow-xs">
               <CloudSun className="w-5 h-5 text-leaf-600 mb-1.5" />
               <h2 className="text-xs font-bold text-forest-950">Agro-Weather</h2>
-              <p className="text-[11px] text-forest-700 mt-0.5">Spray windows & rainfall logs</p>
+              <p className="text-[11px] text-forest-700 mt-0.5">Forecast, spray windows & advisories</p>
             </div>
           </div>
 

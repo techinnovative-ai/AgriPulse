@@ -16,6 +16,9 @@ import {
 import { DeviceRegistrationWizard } from '../components/DeviceRegistrationWizard';
 import { DeviceStatusBadge } from '../components/DeviceStatusBadge';
 import { useAgriPulse } from '../context/AgriPulseContext';
+import { useFarmIntelligence } from '../context/FarmIntelligenceContext';
+import { formatRelativeTime } from '../components/ui';
+import { CHANNEL_META, channelForReading, formatChannelValue } from '../services/telemetryService';
 import { DeviceStatus, IoTDevice } from '../types';
 import { DEVICE_STATUS_META, DEVICE_TYPE_META, maskDeviceIdentifier } from '../services/deviceService';
 
@@ -28,6 +31,11 @@ const formatLastSeen = (value?: string) => {
 
 export const DeviceManagementPage: React.FC = () => {
   const { session, farms, activeFarm, plots, devices, devicesLoading, deviceApiError, registerDevice, assignDeviceGateway } = useAgriPulse();
+  const { telemetry } = useFarmIntelligence();
+  const latestReadingFor = (deviceId: string) => {
+    const readings = telemetry.byDevice[deviceId]?.readings || [];
+    return readings.length ? readings[readings.length - 1] : null;
+  };
   const navigate = useNavigate();
   const [showWizard, setShowWizard] = useState(false);
   const [farmFilter, setFarmFilter] = useState(activeFarm?.id || 'all');
@@ -161,7 +169,15 @@ export const DeviceManagementPage: React.FC = () => {
                     <div><Signal size={15} /><span><strong>{device.locationLabel}</strong><small>{device.locality ? `${device.locality}${device.district ? `, ${device.district}` : ''}${device.state ? `, ${device.state}` : ''}` : 'Installation location'}</small></span></div>
                     <div><RadioTower size={15} /><span><strong>{device.type === 'sensor_node' ? getGatewayName(device) || 'No gateway assigned' : `${devices.filter((item) => item.gatewayId === device.id && item.status !== 'retired').length} linked sensor node(s)`}</strong><small>{device.type === 'sensor_node' ? 'Assigned gateway' : 'Gateway connections'}</small></span></div>
                   </div>
-                  <div className="device-telemetry-empty"><span className="device-telemetry-dot" /><div><strong>No telemetry received yet</strong><small>Last seen · {formatLastSeen(device.lastSeenAt)}</small></div></div>
+                  {(() => {
+                    const latest = latestReadingFor(device.id);
+                    if (!latest) {
+                      return <div className="device-telemetry-empty"><span className="device-telemetry-dot" /><div><strong>{device.type === 'lora_gateway' ? 'Gateways relay data; readings appear on their sensor nodes' : 'No telemetry received yet'}</strong><small>Last seen · {formatLastSeen(device.lastSeenAt)}</small></div></div>;
+                    }
+                    const channel = channelForReading(latest);
+                    const summary = channel ? `${CHANNEL_META[channel].label} ${formatChannelValue(channel, latest.value)}` : `${latest.sensorType} ${latest.value} ${latest.unit}`;
+                    return <div className="device-telemetry-empty is-live"><span className="device-telemetry-dot is-live" /><div><strong>Latest reading · {summary}</strong><small>Measured {formatRelativeTime(latest.measuredAt)} · {telemetry.byDevice[device.id].readings.length} readings loaded · physical sensor</small></div></div>;
+                  })()}
                   {device.type === 'sensor_node' && device.status !== 'retired' && (
                     <label className="device-assign-inline"><span>Assign gateway</span><select value={device.gatewayId || ''} onChange={(event) => assignDeviceGateway(device.id, event.target.value || undefined)}><option value="">No gateway — unassigned</option>{farmGateways.map((gateway) => <option key={gateway.id} value={gateway.id}>{gateway.name}</option>)}</select></label>
                   )}

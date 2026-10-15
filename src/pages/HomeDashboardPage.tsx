@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -36,6 +36,11 @@ import {
   RadioTower,
 } from 'lucide-react';
 import { useAgriPulse } from '../context/AgriPulseContext';
+import { useFarmIntelligence } from '../context/FarmIntelligenceContext';
+import { InsightCard } from '../components/InsightCard';
+import { Badge, Button, SeverityBadge, SourceTag, formatRelativeTime } from '../components/ui';
+import { summarizeByChannel } from '../services/telemetryService';
+import { ALERT_CATEGORY_LABEL } from '../services/alertsService';
 import {
   convertArea,
   formatDate,
@@ -75,6 +80,8 @@ export const HomeDashboardPage: React.FC = () => {
   } = useAgriPulse();
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { insights, irrigationByPlot, activeAlerts, telemetry } = useFarmIntelligence();
 
   // Activity form modal/panel state
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -97,6 +104,21 @@ export const HomeDashboardPage: React.FC = () => {
     [devices, activeFarm]
   );
   const preferredUnit = profile.preferences.preferredAreaUnit;
+
+  // Freshest non-stale sensor values for the active farm (only from paired nodes that have reported).
+  const liveSensor = useMemo(() => {
+    const pick = (channel: 'soil_moisture' | 'soil_temperature') => {
+      const candidates = activeFarmDevices
+        .filter((device) => device.type === 'sensor_node')
+        .flatMap((device) => summarizeByChannel(telemetry.byDevice[device.id]?.readings || [], device).filter((snap) => snap.channel === channel && !snap.isStale).map((snap) => ({ snap, device })))
+        .sort((a, b) => b.snap.latest.measuredAt.localeCompare(a.snap.latest.measuredAt));
+      return candidates[0] || null;
+    };
+    return { moisture: pick('soil_moisture'), soilTemp: pick('soil_temperature') };
+  }, [activeFarmDevices, telemetry.byDevice]);
+  const plotNameFor = (plotId?: string) => currentFarmPlots.find((plot) => plot.id === plotId)?.name;
+  const topInsights = insights.slice(0, 3);
+  const dashboardAlerts = activeAlerts.slice(0, 5);
   const bighaFactor = profile.preferences.bighaToAcreFactor;
 
   // Keep every dashboard metric scoped to the selected farm.
@@ -160,94 +182,6 @@ export const HomeDashboardPage: React.FC = () => {
     [activities, activeFarm]
   );
 
-  // Priority-based alerts derived from actual records
-  const priorityAlerts = useMemo(() => {
-    const list: {
-      id: string;
-      priority: 'High' | 'Medium' | 'Info';
-      title: string;
-      explanation: string;
-      dateLabel: string;
-      actionLabel: string;
-      route: string;
-    }[] = [];
-
-    // 1. Heavy rainfall / shower forecast alert
-    const heavyRainDay = weather.daily.find((d) => d.rainProbPct >= 60 || d.expectedRainMm >= 10);
-    if (heavyRainDay) {
-      list.push({
-        id: 'alert-weather-rain',
-        priority: 'High',
-        title: `Shower Forecast on ${heavyRainDay.dayLabel} (${heavyRainDay.rainProbPct}% prob, ~${heavyRainDay.expectedRainMm} mm)`,
-        explanation: `${weather.sourceType}: Passing shower and ${heavyRainDay.windKmh} km/h winds expected. Check plot drainage bunds and avoid non-essential irrigation right before Friday.`,
-        dateLabel: heavyRainDay.date,
-        actionLabel: 'Open Weather Intelligence',
-        route: '/weather',
-      });
-    }
-
-    // 2. Irrigation needed from recorded field observation
-    const dryObs = currentFarmObs.find(
-      (o) =>
-        o.irrigationStatus === 'Irrigation Due' ||
-        (typeof o.soilMoisturePct === 'number' && o.soilMoisturePct < 42)
-    );
-    if (dryObs) {
-      list.push({
-        id: `alert-irr-${dryObs.id}`,
-        priority: 'High',
-        title: `Irrigation Needed: ${dryObs.plotName || 'Plot'} (${dryObs.cropName || 'Crop'})`,
-        explanation: `Based on saved field observation (${dryObs.sourceLabel}) showing ${dryObs.soilMoisturePct ?? 'low'}% soil moisture: "${dryObs.notes}"`,
-        dateLabel: formatDate(dryObs.recordedAt),
-        actionLabel: 'Inspect Plot Records',
-        route: '/farm',
-      });
-    }
-
-    // 3. Potential disease symptoms recorded
-    const openReport = diseaseReports.find((r) => r.status === 'Needs inspection' && (!activeFarm || r.farmId === activeFarm.id));
-    if (openReport) {
-      list.push({
-        id: `alert-dis-${openReport.id}`,
-        priority: 'High',
-        title: `Crop Inspection Due: ${openReport.cropName} in ${openReport.plotName}`,
-        explanation: `Field note for ${openReport.cropName} marked "${openReport.status}".`,
-        dateLabel: formatDate(openReport.createdAt),
-        actionLabel: 'Browse Disease Index',
-        route: '/disease',
-      });
-    }
-
-    // 4. Upcoming high-priority farm activity
-    const nextUrgentTask = pendingActivities.find((a) => a.priority === 'High');
-    if (nextUrgentTask) {
-      list.push({
-        id: `alert-act-${nextUrgentTask.id}`,
-        priority: 'Medium',
-        title: `Scheduled Activity: ${nextUrgentTask.title}`,
-        explanation: `${nextUrgentTask.category} for ${nextUrgentTask.cropName || 'Farm'} (${nextUrgentTask.plotName || 'Active Farm'}).`,
-        dateLabel: nextUrgentTask.scheduledDate,
-        actionLabel: 'View Farm Calendar',
-        route: '/farm',
-      });
-    }
-
-    // 5. Demo order status update
-    if (orders.length > 0) {
-      const latestOrder = orders[0];
-      list.push({
-        id: `alert-ord-${latestOrder.id}`,
-        priority: 'Info',
-        title: `Demo Order ${latestOrder.id}: Status "${latestOrder.orderStatus}"`,
-        explanation: `Demonstration store order for ${latestOrder.items.length} item(s) (${latestOrder.paymentMode}).`,
-        dateLabel: formatDate(latestOrder.createdAt),
-        actionLabel: 'View Demo Orders',
-        route: '/orders',
-      });
-    }
-
-    return list;
-  }, [weather, currentFarmObs, diseaseReports, pendingActivities, orders, activeFarm]);
 
   // Chart 1: Soil Moisture History from saved observations
   const moistureChartData = useMemo(() => {
@@ -292,13 +226,39 @@ export const HomeDashboardPage: React.FC = () => {
     setEditingActivity(null);
     setActTitle('');
     setActCategory('Irrigation');
-    setActDate('2026-10-15');
+    setActDate(new Date().toISOString().slice(0, 10));
     setActPriority('Medium');
     setActPlotName(currentFarmPlots[0]?.name || '');
     setActCropName(currentFarmCrops[0]?.cropName || '');
     setActNotes('');
     setShowActivityForm(true);
   };
+
+  useEffect(() => {
+    if (searchParams.get('action') !== 'new-task') return;
+    const categoryParam = (searchParams.get('category') || '').trim().toLowerCase();
+    const plot = searchParams.get('plot');
+    const allCategories: ActivityCategory[] = ['Irrigation', 'Sowing', 'Fertilizer Application', 'Pest / Disease Inspection', 'Harvest Planning', 'General Fieldwork'];
+    const category = categoryParam
+      ? allCategories.find((item) => item.toLowerCase() === categoryParam) || allCategories.find((item) => item.toLowerCase().includes(categoryParam))
+      : undefined;
+    openNewActivityModal();
+    if (category) setActCategory(category);
+    if (plot) setActPlotName(plot);
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    next.delete('category');
+    next.delete('plot');
+    setSearchParams(next, { replace: true });
+    setTimeout(() => document.getElementById('farm-calendar')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (window.location.hash === '#farm-calendar') {
+      setTimeout(() => document.getElementById('farm-calendar')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
+  }, []);
 
   const openEditActivityModal = (act: FarmActivity) => {
     setEditingActivity(act);
@@ -425,7 +385,7 @@ export const HomeDashboardPage: React.FC = () => {
             Quick Actions
           </h3>
         </div>
-        <div className="dashboard-quick-grid grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3">
+        <div className="dashboard-quick-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <button
             type="button"
             onClick={() => navigate('/farm?tab=farms&action=new')}
@@ -500,11 +460,23 @@ export const HomeDashboardPage: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => navigate('/devices')}
+            onClick={() => navigate('/monitoring')}
             className="dashboard-quick-action flex items-center gap-2.5 p-3.5 rounded-xl bg-white hover:bg-forest-50 border border-slate-200 hover:border-forest-300 text-left transition-all shadow-sm"
           >
             <div className="p-2 rounded-lg bg-forest-100 text-forest-800"><RadioTower className="w-4 h-4" /></div>
-            <span className="text-xs font-bold text-slate-800 leading-tight">Devices & IoT</span>
+            <span className="text-xs font-bold text-slate-800 leading-tight">Live Monitoring</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              openNewActivityModal();
+              setTimeout(() => document.getElementById('farm-calendar')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+            }}
+            className="dashboard-quick-action flex items-center gap-2.5 p-3.5 rounded-xl bg-white hover:bg-forest-50 border border-slate-200 hover:border-forest-300 text-left transition-all shadow-sm"
+          >
+            <div className="p-2 rounded-lg bg-amber-100 text-amber-800"><CalendarCheck className="w-4 h-4" /></div>
+            <span className="text-xs font-bold text-slate-800 leading-tight">Plan a Task</span>
           </button>
 
           <button
@@ -520,7 +492,78 @@ export const HomeDashboardPage: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. Six saved-record farm summary cards */}
+      {/* 3. Today's guidance: top insights and irrigation status (shared rule engine) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <section className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm" aria-labelledby="dashboard-insights-title">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div>
+              <h3 id="dashboard-insights-title" className="text-base font-bold text-slate-900">Top AI insights</h3>
+              <p className="text-xs text-slate-500">Rule set v1 · what was observed, where, why it matters and what to do</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <SourceTag source="rule_based" />
+              <Button variant="ghost" size="sm" to="/insights" trailingIcon={<ArrowRight size={13} />}>All insights ({insights.length})</Button>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3">
+            {topInsights.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-xl">
+                No insights right now. They appear as observations, sensor readings, weather and tasks change.
+              </div>
+            ) : (
+              topInsights.map((insight) => <InsightCard key={insight.id} insight={insight} />)
+            )}
+          </div>
+        </section>
+
+        <section className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm" aria-labelledby="dashboard-irrigation-title">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div>
+              <h3 id="dashboard-irrigation-title" className="text-base font-bold text-slate-900">Irrigation guidance</h3>
+              <p className="text-xs text-slate-500">Per zone · freshest moisture value vs. crop target band and 48 h rain outlook</p>
+            </div>
+            <Button variant="ghost" size="sm" to="/irrigation" trailingIcon={<ArrowRight size={13} />}>Details</Button>
+          </div>
+          <ul className="mt-4 space-y-2.5">
+            {irrigationByPlot.length === 0 ? (
+              <li className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-xl">
+                Add a crop record to each zone to receive irrigation guidance.
+              </li>
+            ) : (
+              irrigationByPlot.map((guidance) => {
+                const tone =
+                  guidance.status === 'irrigate_now' ? 'danger' : guidance.status === 'irrigate_soon' ? 'warning' : guidance.status === 'no_data' ? 'neutral' : guidance.status === 'adequate' ? 'success' : 'info';
+                const label =
+                  guidance.status === 'irrigate_now' ? 'Irrigate now' : guidance.status === 'irrigate_soon' ? 'Irrigate soon' : guidance.status === 'hold_rain' ? 'Hold — rain expected' : guidance.status === 'too_wet' ? 'Too wet' : guidance.status === 'adequate' ? 'Adequate' : 'No data';
+                return (
+                  <li key={guidance.plot.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">{guidance.plot.name}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{guidance.crop ? `${guidance.crop.cropName} · ${guidance.crop.growthStage}` : 'No crop'} · target {guidance.target.min}–{guidance.target.max}%</p>
+                      </div>
+                      <Badge tone={tone} size="sm">{label}</Badge>
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-slate-700 flex flex-wrap items-center gap-1.5">
+                      {guidance.moisture ? (
+                        <>
+                          <span className="font-semibold">{guidance.moisture.value.toFixed(0)}%</span>
+                          <SourceTag source={guidance.moisture.source} />
+                          <span className="text-slate-500">{formatRelativeTime(guidance.moisture.at)}</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-500">No moisture value — record a reading or pair a sensor.</span>
+                      )}
+                    </p>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </section>
+      </div>
+
+      {/* 4. Six saved-record farm summary cards */}
       <section aria-label="Key Farm Summary Metrics" className="dashboard-metrics-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
         <article className="metric-card">
           <div className="metric-card-heading"><span className="metric-icon"><Tractor size={17} /></span><span>Farm area</span></div>
@@ -536,8 +579,8 @@ export const HomeDashboardPage: React.FC = () => {
 
         <article className="metric-card">
           <div className="metric-card-heading"><span className="metric-icon metric-icon--water"><Droplets size={17} /></span><span>Soil moisture</span></div>
-          <div className="metric-value-row"><strong>{latestMoistureObs?.soilMoisturePct !== undefined ? `${latestMoistureObs.soilMoisturePct}%` : '—'}</strong><span>{latestMoistureObs ? 'last recorded' : 'no record yet'}</span></div>
-          <p>{latestMoistureObs ? `Farmer recorded · ${latestMoistureObs.plotName || 'active farm'}` : 'No manual moisture observation'}{activeFarmDevices.length ? ` · ${activeFarmDevices.length} device record${activeFarmDevices.length === 1 ? '' : 's'} in Devices` : ''}</p>
+          <div className="metric-value-row"><strong>{liveSensor.moisture ? `${liveSensor.moisture.snap.latest.value.toFixed(0)}%` : latestMoistureObs?.soilMoisturePct !== undefined ? `${latestMoistureObs.soilMoisturePct}%` : '—'}</strong><span>{liveSensor.moisture ? 'sensor reading' : latestMoistureObs ? 'last recorded' : 'no record yet'}</span></div>
+          <p>{liveSensor.moisture ? `${liveSensor.moisture.device.name} · ${formatRelativeTime(liveSensor.moisture.snap.latest.measuredAt)}` : latestMoistureObs ? `Farmer recorded · ${latestMoistureObs.plotName || 'active farm'}` : 'No manual moisture observation'}{!liveSensor.moisture && activeFarmDevices.length ? ` · ${activeFarmDevices.length} device record${activeFarmDevices.length === 1 ? '' : 's'}, none reporting yet` : ''}</p>
         </article>
 
         <article className="metric-card">
@@ -559,7 +602,7 @@ export const HomeDashboardPage: React.FC = () => {
         </article>
       </section>
 
-      {/* 4. Farm Condition Overview & Weather Preview Grid */}
+      {/* 5. Farm Condition Overview & Weather Preview Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Farm Condition Overview (7 cols) */}
         <section className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
@@ -570,12 +613,16 @@ export const HomeDashboardPage: React.FC = () => {
                   Farm Condition Overview — {activeFarm?.name || 'All Farms'}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  This panel uses farmer-entered observations and crop records; device telemetry is shown separately in Devices & IoT.
+                  Live sensor values are used when a paired node reports; otherwise your recorded observations and crop records are shown, each with its source label. Full telemetry is in Live Monitoring.
                 </p>
               </div>
-              <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                {activeFarmDevices.length} device record{activeFarmDevices.length === 1 ? '' : 's'} · telemetry shown separately
-              </span>
+              <button
+                type="button"
+                onClick={() => navigate('/monitoring')}
+                className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200 hover:bg-forest-50 hover:border-forest-300"
+              >
+                {activeFarmDevices.length} device{activeFarmDevices.length === 1 ? '' : 's'} · {liveSensor.moisture || liveSensor.soilTemp ? 'live readings' : 'no node reporting yet'} · open monitoring
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
@@ -586,19 +633,25 @@ export const HomeDashboardPage: React.FC = () => {
                     <Droplets className="w-4 h-4 text-sky-600" />
                     Soil Moisture
                   </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
-                    {latestMoistureObs ? (latestMoistureObs.sourceLabel || 'Last Recorded') : 'No observation'}
-                  </span>
+                  {liveSensor.moisture ? (
+                    <SourceTag source="physical_sensor" />
+                  ) : (
+                    <SourceTag source={latestMoistureObs ? (latestMoistureObs.sourceLabel === 'Demo Sample Record' ? 'demo' : 'manual_observation') : 'unavailable'} />
+                  )}
                 </div>
                 <p className="text-xl font-extrabold text-slate-900 mt-2">
-                  {latestMoistureObs?.soilMoisturePct !== undefined
-                    ? `${latestMoistureObs.soilMoisturePct}%`
-                    : 'Not recorded'}
+                  {liveSensor.moisture
+                    ? `${liveSensor.moisture.snap.latest.value.toFixed(0)}%`
+                    : latestMoistureObs?.soilMoisturePct !== undefined
+                      ? `${latestMoistureObs.soilMoisturePct}%`
+                      : 'Not recorded'}
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                  {latestMoistureObs
-                    ? `${latestMoistureObs.plotName} (${formatDate(latestMoistureObs.recordedAt)})`
-                    : 'Log a manual probe reading in Farm'}
+                  {liveSensor.moisture
+                    ? `${liveSensor.moisture.device.name} · ${plotNameFor(liveSensor.moisture.device.plotId) || liveSensor.moisture.device.locationLabel} · ${formatRelativeTime(liveSensor.moisture.snap.latest.measuredAt)}`
+                    : latestMoistureObs
+                      ? `${latestMoistureObs.plotName} (${formatDate(latestMoistureObs.recordedAt)})`
+                      : 'Log a manual probe reading in Farm'}
                 </p>
               </div>
 
@@ -609,19 +662,25 @@ export const HomeDashboardPage: React.FC = () => {
                     <Thermometer className="w-4 h-4 text-harvest-600" />
                     Soil Temperature
                   </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
-                    {latestSoilTempObs ? 'Last Recorded' : 'Demo Est.'}
-                  </span>
+                  {liveSensor.soilTemp ? (
+                    <SourceTag source="physical_sensor" />
+                  ) : (
+                    <SourceTag source={latestSoilTempObs ? (latestSoilTempObs.sourceLabel === 'Demo Sample Record' ? 'demo' : 'manual_observation') : weather.sourceType === 'Live API' ? 'weather_api' : 'weather_demo'} />
+                  )}
                 </div>
                 <p className="text-xl font-extrabold text-slate-900 mt-2">
-                  {latestSoilTempObs?.soilTempC !== undefined
-                    ? `${latestSoilTempObs.soilTempC}°C`
-                    : `${weather.soilTempEstimateC}°C`}
+                  {liveSensor.soilTemp
+                    ? `${liveSensor.soilTemp.snap.latest.value.toFixed(1)}°C`
+                    : latestSoilTempObs?.soilTempC !== undefined
+                      ? `${latestSoilTempObs.soilTempC}°C`
+                      : `${weather.soilTempEstimateC}°C`}
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                  {latestSoilTempObs
-                    ? `Recorded ${formatDate(latestSoilTempObs.recordedAt)}`
-                    : 'Estimated from demo agro-met data'}
+                  {liveSensor.soilTemp
+                    ? `${liveSensor.soilTemp.device.name} · ${formatRelativeTime(liveSensor.soilTemp.snap.latest.measuredAt)}`
+                    : latestSoilTempObs
+                      ? `Recorded ${formatDate(latestSoilTempObs.recordedAt)}`
+                      : 'Estimate from weather data, not a soil measurement'}
                 </p>
               </div>
 
@@ -811,65 +870,54 @@ export const HomeDashboardPage: React.FC = () => {
         </section>
       </div>
 
-      {/* 5. Important Priority Alerts & Interactive Farm Activity Calendar */}
+      {/* 6. Recent alerts & Interactive Farm Activity Calendar */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Important Alerts Panel (5 cols) */}
-        <section className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+        {/* Important Alerts Panel (5 cols) — shared with the Alerts page and header bell */}
+        <section className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm" aria-labelledby="dashboard-alerts-title">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Priority Farm Alerts & Attention Items
+              <h3 id="dashboard-alerts-title" className="text-base font-bold text-slate-900">
+                Recent alerts
               </h3>
               <p className="text-xs text-slate-500">
-                Generated from your saved observations, tasks, demo orders, and forecast
+                Zone or device, time raised, severity and next step — from your records, device status and the forecast
               </p>
             </div>
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900">
-              {priorityAlerts.length}
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeAlerts.length ? 'bg-amber-100 text-amber-900' : 'bg-forest-100 text-forest-900'}`}>
+              {activeAlerts.length}
             </span>
           </div>
 
           <div className="mt-4 space-y-3">
-            {priorityAlerts.length === 0 ? (
+            {dashboardAlerts.length === 0 ? (
               <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-xl">
-                No priority alerts right now. All recorded activities and observations are up to date.
+                No open alerts. Nothing in your records, device status or the weather outlook needs attention right now.
               </div>
             ) : (
-              priorityAlerts.map((alert) => (
-                <div
+              dashboardAlerts.map((alert) => (
+                <article
                   key={alert.id}
                   className={`p-3.5 rounded-xl border ${
-                    alert.priority === 'High'
+                    alert.severity === 'high' || alert.severity === 'critical'
+                      ? 'bg-red-50/60 border-red-200'
+                      : alert.severity === 'medium'
                       ? 'bg-amber-50/70 border-amber-200'
-                      : alert.priority === 'Medium'
-                      ? 'bg-forest-50/60 border-forest-200'
                       : 'bg-slate-50 border-slate-200'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <AlertTriangle
-                        className={`w-4 h-4 shrink-0 ${
-                          alert.priority === 'High' ? 'text-amber-700' : 'text-forest-700'
-                        }`}
-                      />
-                      <span
-                        className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                          alert.priority === 'High'
-                            ? 'bg-amber-200/80 text-amber-950'
-                            : 'bg-forest-200/70 text-forest-900'
-                        }`}
-                      >
-                        {alert.priority} Priority
-                      </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <SeverityBadge severity={alert.severity} size="sm" />
+                      <Badge tone="neutral" size="sm">{ALERT_CATEGORY_LABEL[alert.category]}</Badge>
                     </div>
-                    <span className="text-[11px] font-medium text-slate-500">
-                      {alert.dateLabel}
+                    <span className="text-[11px] font-medium text-slate-500 whitespace-nowrap">
+                      {formatRelativeTime(alert.occurredAt)}
                     </span>
                   </div>
                   <h4 className="text-xs font-bold text-slate-900 mt-1.5">{alert.title}</h4>
+                  <p className="text-[11px] font-semibold text-forest-800 mt-0.5 flex items-center gap-1"><MapPin className="w-3 h-3" />{alert.affected}</p>
                   <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    {alert.explanation}
+                    <span className="font-semibold text-slate-700">Next step: </span>{alert.nextStep}
                   </p>
                   <button
                     type="button"
@@ -879,14 +927,19 @@ export const HomeDashboardPage: React.FC = () => {
                     <span>{alert.actionLabel}</span>
                     <ArrowRight className="w-3 h-3" />
                   </button>
-                </div>
+                </article>
               ))
+            )}
+            {activeAlerts.length > 0 && (
+              <Button variant="secondary" size="sm" to="/alerts" block trailingIcon={<ArrowRight size={13} />}>
+                {activeAlerts.length > dashboardAlerts.length ? `Review all ${activeAlerts.length} alerts` : 'Open alerts & notifications'}
+              </Button>
             )}
           </div>
         </section>
 
         {/* Interactive Weekly Activity Calendar (7 cols) */}
-        <section className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+        <section id="farm-calendar" className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm scroll-mt-24">
           <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
             <div>
               <h3 className="text-base font-bold text-slate-900">
@@ -1145,7 +1198,7 @@ export const HomeDashboardPage: React.FC = () => {
         </section>
       </div>
 
-      {/* 6. Dashboard Charts */}
+      {/* 7. Dashboard Charts */}
       <section aria-label="Farm Analytics & Visualizations" className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Chart 1: Recorded Soil Moisture History */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">

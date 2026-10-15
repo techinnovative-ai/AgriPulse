@@ -106,7 +106,7 @@ export const FloatingAIChat: React.FC = () => {
         <button
           type="button"
           onClick={() => setIsChatOpen(true)}
-          className="fixed bottom-20 lg:bottom-6 right-4 lg:right-6 z-40 flex items-center gap-2.5 bg-forest-800 hover:bg-forest-900 text-white pl-2 pr-4 py-2 rounded-full shadow-lg border border-forest-600 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-700"
+          className="app-floating-chat fixed bottom-20 lg:bottom-6 right-4 lg:right-6 z-40 flex items-center gap-2.5 bg-forest-800 hover:bg-forest-900 text-white pl-2 pr-4 py-2 rounded-full shadow-lg border border-forest-600 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-700"
           aria-label="Open AGRIPULSE AI Assistant"
         >
           <img
@@ -126,7 +126,7 @@ export const FloatingAIChat: React.FC = () => {
         <div
           role="dialog"
           aria-label="AGRIPULSE AI Assistant"
-          className="fixed bottom-16 lg:bottom-5 right-3 sm:right-6 z-50 w-[calc(100vw-1.5rem)] sm:w-[400px] max-h-[78vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+          className="app-floating-chat fixed bottom-16 lg:bottom-5 right-3 sm:right-6 z-50 w-[calc(100vw-1.5rem)] sm:w-[400px] max-h-[78vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
         >
           {/* Header */}
           <div className="bg-forest-900 text-white px-4 py-3 flex items-center justify-between">

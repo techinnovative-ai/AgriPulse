@@ -91,6 +91,12 @@ export const FarmerSignUpPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-3 text-xs">
           <Link
+            to="/"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-forest-100 hover:text-white hover:bg-forest-900 border border-transparent hover:border-forest-700 font-medium transition"
+          >
+            ← Back to website
+          </Link>
+          <Link
             to="/farmer/login"
             className="px-3.5 py-1.5 rounded-lg bg-leaf-600 hover:bg-leaf-500 text-white font-medium transition shadow-sm"
           >

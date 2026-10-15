@@ -109,6 +109,8 @@ export const FarmManagementPage: React.FC = () => {
     } else if (tabParam === 'farms' && actionParam === 'new') {
       setActiveTab('farms');
       setShowFarmForm(true);
+    } else if (tabParam === 'crops' || tabParam === 'farms' || tabParam === 'converter') {
+      setActiveTab(tabParam);
     }
   }, [searchParams]);
 
