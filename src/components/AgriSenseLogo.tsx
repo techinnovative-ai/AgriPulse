@@ -4,6 +4,8 @@ interface AgriSenseLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   theme?: 'dark' | 'light';
   showTagline?: boolean;
+  /** Small caption under the wordmark; defaults to "Farm Digital Twin". */
+  subtitle?: string;
   className?: string;
 }
 
@@ -11,6 +13,7 @@ export const AgriSenseLogo: React.FC<AgriSenseLogoProps> = ({
   size = 'md',
   theme = 'dark',
   showTagline = false,
+  subtitle = 'Farm Digital Twin',
   className = '',
 }) => {
   const iconSizeClass =
@@ -127,7 +130,7 @@ export const AgriSenseLogo: React.FC<AgriSenseLogoProps> = ({
           </span>
         ) : (
           <span className={`text-[9px] font-semibold tracking-wider uppercase ${subColor}`}>
-            Farm Digital Twin
+            {subtitle}
           </span>
         )}
       </div>

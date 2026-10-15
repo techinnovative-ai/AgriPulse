@@ -2,7 +2,7 @@
 
 **See More. Predict Earlier. Grow Smarter.**
 
-AgriPulse is a smart-agriculture platform for Indian farms: a public website that explains the product, and a **Farmer Portal** that brings farm records, sensor telemetry, a digital farm twin, rule-based insights, irrigation guidance, weather context, alerts and reports into one consistent workspace. A seller workspace for agri-input dealers is included as a concept.
+AgriPulse is a smart-agriculture platform for Indian farms: a public website that explains the product, a **Farmer Portal** that brings farm records, sensor telemetry, a digital farm twin, rule-based insights, irrigation guidance, weather context, alerts and reports into one consistent workspace, and **Seller Central**, a workspace for agri-input dealers built on the same shell and design system (orders, catalogue, payouts status, reports, store settings — marketplace flows are demonstrations).
 
 > **Honest status.** This is a development-stage product with a real authenticated API, server-backed workspaces and a secure device registry/pairing/telemetry pipeline. It is **not** yet a production agricultural, commerce, weather, AI or hardware service. The section [What is real today](#what-is-real-today) lists exactly what works, what is partial and what is planned.
 
@@ -12,6 +12,7 @@ AgriPulse is a smart-agriculture platform for Indian farms: a public website tha
 
 - [What is real today](#what-is-real-today)
 - [Farmer Portal modules](#farmer-portal-modules)
+- [Seller Central](#seller-central)
 - [Public website](#public-website)
 - [Data integrity rules](#data-integrity-rules)
 - [How the rule engine works](#how-the-rule-engine-works)
@@ -41,7 +42,7 @@ AgriPulse is a smart-agriculture platform for Indian farms: a public website tha
 | Weather | **Partial** | A clearly labelled demo forecast is used unless `VITE_WEATHER_API_URL` points to a provider. Precipitation is always a forecast estimate — the platform has **no rain gauge**. |
 | AI farming assistant | **Partial** | Local rule-based and reference answers with farm context; not a hosted generative model. |
 | Crop health / disease | **Partial** | Symptom reports and a 100-disease reference library. Image-based diagnosis is planned. |
-| Marketplace, orders, seller tools | **Demo** | Catalogue, cart, checkout and seller screens are demonstrations; nothing is shipped or charged. |
+| Marketplace, orders, Seller Central | **Demo** | Catalogue, cart, checkout and the seller workspace are demonstrations: listings, stock and order status changes are saved to the workspace, but nothing is shipped, charged, invoiced or settled. |
 | ML models, satellite/drone imagery, yield prediction, pump control | **Planned** | Shown as "planned" in the UI; never presented as working. |
 
 ## Farmer Portal modules
@@ -68,6 +69,21 @@ Sign in at `/farmer/login` (the development demo workspace is available from the
 | Farm settings | `/account` | Profile, preferences, demo data reset. |
 
 Deep links used across modules: `/home?action=new-task&category=<ActivityCategory>&plot=<plotName>`, `/home#farm-calendar`, `/crop-health?action=report`, `/twin?zone=<plotId>`, `/farm?tab=observations&action=new`.
+
+## Seller Central
+
+Sign in at `/login` (seller accounts register at `/signup`). Seller Central uses the same `PortalShell` as the Farmer Portal — identical sidebar, header, notifications, mobile drawer and bottom navigation — with seller navigation and seller-specific "needs attention" items (orders awaiting acceptance, out-of-stock or low-stock listings, incomplete profile).
+
+| Module | Route | What it does |
+| --- | --- | --- |
+| Dashboard | `/seller` | Orders awaiting acceptance, orders in progress, active listings, delivered order value; attention list with next steps; store/integration status; inventory watch; recent orders. |
+| Orders | `/seller/orders` | Pipeline counts, status tabs and search, order detail with printable statement, confirmed workflow Placed → Processing → Dispatched → Delivered, cancellation while Placed/Processing, CSV export. Deep links `?status=<OrderStatus>` and `?order=<id>`. |
+| Catalogue & inventory | `/seller/catalog` | Own listings vs. whole marketplace (read-only), category/stock/search filters, add/edit listing with validation, stock ±5, mark out of stock / restock, delete with confirmation, CSV export. Deep links `?action=new`, `?stock=<in_stock|low_stock|out_of_stock>`, `?q=<text>`. |
+| Payouts & settlements | `/seller/payouts` | Honest integration status (payments, settlement schedule, bank account, GST invoicing are **not connected**) and order value by status. The settlement ledger is empty until a provider exists. |
+| Reports & analytics | `/seller/reports` | Orders and order value per week (4/8/12 weeks), best-selling listings, listings by category, CSV exports. |
+| Store settings | `/seller/settings` | Business identity, tax/licence details, dispatch address with GSTIN/PIN/mobile format checks and explicit Save/Discard; account status; demo reset. |
+
+In the development demo workspace the same user holds both roles, so the header offers **Preview store** (opens the farmer-side store) and **Farmer Portal**; the Farmer Portal offers **Seller Central** in return. Registered accounts hold one role and do not see these switches. Orders reach a seller only inside the shared demo workspace — routing orders from farmer accounts to individual seller accounts is not implemented. `/seller/dashboard` redirects to `/seller`.
 
 ## Public website
 
@@ -103,15 +119,18 @@ src/
   components/ui/        shared design system (tokens in ui.css, Button, Panel, PageHeader, Badge/SourceTag,
                         MetricCard, States, Controls, Dialog, DataTable, ChartContainer, Timestamp)
   components/public/    public-site layout and sections
-  components/           AppShell (sidebar, header, mobile nav), FarmTwinMap, InsightCard, SensorChannelCard, chat
+  components/           PortalShell (generic sidebar/header/notifications/mobile nav frame), AppShell (farmer),
+                        SellerShell (seller), FarmTwinMap, InsightCard, SensorChannelCard, chat
   context/              AgriPulseContext (session, workspace, devices), FarmIntelligenceContext (telemetry +
                         insights + alerts shared by the dashboard, bell, Alerts, Insights, Irrigation, Soil, Reports)
   hooks/                useFarmTelemetry (per-device telemetry fetch, auto-refresh only after a node has reported)
-  services/             telemetryService, insightsService, alertsService, weatherService, deviceService, …
-  pages/                portal module pages;  pages/public/ website pages
+  services/             telemetryService, insightsService, alertsService, weatherService, deviceService,
+                        sellerService (order workflow, stock states, attention items, validators), …
+  pages/                farmer module pages;  pages/seller/ Seller Central;  pages/public/ website pages
   data/                 seed demo data and public-site content
 server/                 Express 5 API: auth, workspaces, devices, pairing, telemetry ingest (SQLite)
-scripts/                smoke-render.mjs (headless route check), simulate-node.mjs (bench simulator)
+scripts/                smoke-render.mjs (headless route check), simulate-node.mjs (bench simulator),
+                        checks/seller-workflow.mjs (interaction check run through the smoke harness)
 docs/                   DESIGN_SYSTEM.md, DEVICE_API_CONTRACTS.md, BLUEPRINT.md
 ```
 
@@ -136,10 +155,13 @@ npm run dev
 npm run lint        # tsc --noEmit + syntax check of the server modules
 npm test            # API tests (auth, workspaces, devices, pairing, telemetry)
 npm run build       # production bundle
-npm run smoke       # headless render of every public and portal route against the running API
+npm run smoke       # headless render of every public, Farmer Portal and Seller Central route against the running API
+npm run smoke:seller# Seller Central interaction check (listing CRUD, order workflow, settings validation, portal switch)
 ```
 
-`npm run smoke` needs the API running (`npm run dev:api`). It mounts the real app in jsdom, visits all public routes, opens the development demo session and visits every portal route, failing on console errors, unexpected 404 pages or empty content. Use `--only /route,/other`, `--dump` or `--find <regex>` to inspect a page.
+`npm run smoke` needs the API running (`npm run dev:api`). It mounts the real app in jsdom, visits all public routes, opens the development demo session and visits every Farmer Portal and Seller Central route, failing on console errors, unexpected 404 pages or empty content. Use `--only /route,/other`, `--dump` or `--find <regex>` to inspect a page.
+
+`npm run smoke:seller` runs the Seller Central interaction check (`scripts/checks/seller-workflow.mjs`): listing validation → publish → stock changes → delete, then accept → dispatch → deliver on a sample order it inserts into the demo workspace and removes afterwards, plus settings validation. Any script can be attached with `--script <file.mjs>`.
 
 ## Bench simulator (developer tool)
 
@@ -169,7 +191,8 @@ Frontend (`.env.example`): `VITE_WEATHER_API_URL` is an endpoint hook for a weat
 - Alert acknowledgements are stored per browser, not on the server.
 - Insights are computed in the browser for the active farm; there is no scheduled server-side evaluation yet.
 - Gateways do not report heartbeats through the current ingest route, so a paired gateway shows as pending until a heartbeat path exists.
-- Marketplace and seller flows are demonstrations.
+- Marketplace and Seller Central flows are demonstrations: no payment, courier, GST invoice, buyer notification or settlement is produced; seller verification is manual and not available.
+- Orders are visible to a seller only within the shared development demo workspace; farmer-to-seller order routing between separate accounts is not implemented.
 
 ## Before any production deployment
 

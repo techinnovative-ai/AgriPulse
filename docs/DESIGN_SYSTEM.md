@@ -56,7 +56,7 @@ Crop-stress levels: low `#387333`, moderate `#C78A2F`, high `#C84E48` — always
 | `ChartContainer`, `ChartTooltip`, `CHART_COLORS`, `CHART_AXIS_PROPS`, `CHART_GRID_PROPS` | Recharts wrapper | Title, subtitle, unit, source, legend, empty state; gaps are rendered as gaps, not zero. |
 | `DataTable` | Responsive tables | Horizontal scroll wrapper, header styling, empty state. |
 
-Feature components built on these primitives: `InsightCard` (what / where / supporting data / why / action / confidence / generated-at), `SensorChannelCard` (value, unit, trend, guide range, timestamp, device, status), `FarmTwinMap` (schematic zones, overlays, keyboard selection), `AppShell` (sidebar, header with farm switcher + alert bell, mobile drawer and bottom nav, floating assistant).
+Feature components built on these primitives: `InsightCard` (what / where / supporting data / why / action / confidence / generated-at), `SensorChannelCard` (value, unit, trend, guide range, timestamp, device, status), `FarmTwinMap` (schematic zones, overlays, keyboard selection), `PortalShell` (generic portal frame: collapsible sidebar groups remembered per portal, breadcrumb header, quick search, date chip, notification bell with severity badges, profile menu, banner slot, mobile drawer and 5-column bottom nav), `AppShell` (Farmer Portal on `PortalShell`: farm switcher, weather chip, cart, Seller Central switch, floating assistant) and `SellerShell` (Seller Central on `PortalShell`: store identity chip with verification status, Preview store / Farmer Portal switches, attention items as notifications). Both portals therefore share one header, sidebar, notification and mobile-navigation implementation.
 
 ## Page patterns
 
@@ -100,5 +100,5 @@ Every data surface must handle: loading (skeleton), empty (what to do next), err
 1. Start from an existing module page and reuse `PageHeader`, `Panel`, `MetricCard`, states and controls.
 2. Pull farm data from `useAgriPulse()` and derived intelligence from `useFarmIntelligence()`; do not recompute insights locally.
 3. Label every value with a `SourceTag`; never invent a reading.
-4. Add the route in `src/App.tsx` (and `FARMER_ROUTE_PREFIXES` for guarded routes), the nav entry in `AppShell`'s `NAV_GROUPS`, and the route to `scripts/smoke-render.mjs`.
+4. Add the route in `src/App.tsx` (and `FARMER_ROUTE_PREFIXES` for guarded farmer routes), the nav entry in `AppShell`'s `NAV_GROUPS` or `SellerShell`'s `SELLER_NAV_GROUPS`, and the route to `PORTAL_ROUTES` / `SELLER_ROUTES` in `scripts/smoke-render.mjs`.
 5. Run `npm run lint`, `npm test`, `npm run build`, `npm run smoke`.

@@ -580,8 +580,10 @@ export const AgriPulseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (session.portalType === target) return true;
     try {
       const response = await authApi.switchPortal(target);
-      setSession(response.session);
+      // Load the farmer device registry before publishing the new session so the caller's
+      // navigation and the session change land in the same render (no redirect flash).
       if (target === 'farmer') await refreshDevices(response.session);
+      setSession(response.session);
       return true;
     } catch (error) {
       setWorkspaceSyncError(error instanceof Error ? error.message : 'This account cannot switch to that portal.');

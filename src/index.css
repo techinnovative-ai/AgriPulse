@@ -1604,7 +1604,7 @@
 }
 
 @media print {
-  header:not(.ap-page-header),
+  header:not(.ap-page-header):not(.ap-dialog__header),
   aside,
   nav,
   .no-print,
@@ -1699,6 +1699,50 @@
 @media (max-width: 767px) {
   .app-farm-switcher { width: 100%; }
   .app-farm-switcher select { flex: 1; max-width: none; }
+}
+
+/* Seller Central header chip — same frame as the farm switcher, read-only store identity. */
+.app-store-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 10px 0 11px;
+  min-height: 34px;
+  border: 1px solid #d9e3d4;
+  border-radius: 12px;
+  background: #f6f9f3;
+}
+.app-store-chip__name {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1c3824;
+  font-size: 12px;
+  font-weight: 700;
+}
+.app-store-chip__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fff4dd;
+  color: #7a5213;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.app-store-chip__status.is-verified {
+  background: #e6f2e2;
+  color: #285b2d;
+}
+@media (max-width: 767px) {
+  .app-store-chip { width: 100%; }
+  .app-store-chip__name { flex: 1; max-width: none; }
 }
 
 /* ---------- Route-level loading fallback ---------- */

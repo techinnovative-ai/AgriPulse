@@ -7,7 +7,11 @@
  * route throws, renders the 404 page unexpectedly, or logs a React error.
  *
  *   npm run dev:api            # in another terminal
- *   node scripts/smoke-render.mjs [--api http://127.0.0.1:4000] [--public-only] [--only /a,/b] [--dump] [--find <regex>]
+ *   node scripts/smoke-render.mjs [--api http://127.0.0.1:4000] [--public-only] [--only /a,/b] [--dump] [--find <regex>] [--script <file.mjs>]
+ *
+ * `--script` imports an ES module after the route sweep and calls its default export with
+ * `{ window, navigate, text, waitFor, sleep, apiFetch, visit, startDemoSession, failures }`
+ * so interaction checks (clicking through a workflow) can reuse the same environment.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,6 +26,7 @@ const publicOnly = args.includes('--public-only');
 const dump = args.includes('--dump');
 const only = args.includes('--only') ? args[args.indexOf('--only') + 1].split(',') : null;
 const find = args.includes('--find') ? new RegExp(args[args.indexOf('--find') + 1], 'i') : null;
+const scriptPath = args.includes('--script') ? path.resolve(args[args.indexOf('--script') + 1]) : null;
 const origWarn = console.warn;
 console.warn = (...parts) => {
   if (/width\(0\) and height\(0\) of chart/.test(String(parts[0]))) return; // jsdom has no layout
@@ -29,6 +34,7 @@ console.warn = (...parts) => {
 };
 
 const PUBLIC_ROUTES = ['/', '/platform', '/digital-twin', '/ai-capabilities', '/how-it-works', '/technology', '/impact', '/roadmap', '/about', '/faq', '/contact', '/farmer/login', '/farmer/signup', '/login', '/signup', '/this-route-does-not-exist'];
+const SELLER_ROUTES = ['/seller', '/seller/dashboard', '/seller/orders', '/seller/orders?status=Placed', '/seller/catalog', '/seller/catalog?action=new', '/seller/catalog?stock=out_of_stock', '/seller/payouts', '/seller/reports', '/seller/settings'];
 const PORTAL_ROUTES = ['/home', '/alerts', '/farm', '/farm?tab=observations', '/farm?tab=crops', '/monitoring', '/twin', '/insights', '/irrigation', '/soil', '/crop-health', '/crop-health?action=report', '/weather', '/devices', '/reports', '/assistant', '/dictionary', '/disease', '/news', '/schemes', '/store', '/cart', '/orders', '/wishlist', '/offers', '/account'];
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -196,23 +202,54 @@ async function visit(route, { expectNotFound = false, expectPortal = false } = {
 console.log(`Public routes (${PUBLIC_ROUTES.length})`);
 for (const route of PUBLIC_ROUTES.filter((r) => !only || only.includes(r))) await visit(route, { expectNotFound: route.includes('does-not-exist') });
 
-if (!publicOnly) {
-  const demo = await apiFetch('/api/dev/demo-session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ portalType: 'farmer' }) });
-  if (!demo.ok) {
-    console.log(`Demo session unavailable (${demo.status}); skipping portal routes.`);
+/** Creates a development demo session for a portal and remounts the app so the cookie is picked up. */
+async function startDemoSession(portalType) {
+  const demo = await apiFetch('/api/dev/demo-session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ portalType }) });
+  if (!demo.ok) return false;
+  reactRoot.unmount();
+  await sleep(50);
+  const fresh = window.document.createElement('div');
+  window.document.body.appendChild(fresh);
+  reactRoot = mount(fresh);
+  if (portalType === 'seller') {
+    navigate('/seller');
+    await waitFor(() => /Seller dashboard|Seller Central/i.test(text()) && !/Loading secure/.test(text()), 15000);
   } else {
-    // Remount the app so the session is picked up from the cookie.
-    reactRoot.unmount();
-    await sleep(50);
-    const fresh = window.document.createElement('div');
-    window.document.body.appendChild(fresh);
-    reactRoot = mount(fresh);
     navigate('/home');
     await waitFor(() => /Dashboard|Farm Condition|Good (morning|afternoon|evening)/i.test(text()) && !/Loading secure/.test(text()), 15000);
-    console.log(`Portal routes (${PORTAL_ROUTES.length})`);
-    const extraPortal = (only || []).filter((r) => !PORTAL_ROUTES.includes(r) && !PUBLIC_ROUTES.includes(r));
-    for (const route of [...PORTAL_ROUTES.filter((r) => !only || only.includes(r)), ...extraPortal]) await visit(route, { expectPortal: true });
   }
+  return true;
+}
+
+if (!publicOnly) {
+  const farmerWanted = PORTAL_ROUTES.filter((r) => !only || only.includes(r));
+  const extraPortal = (only || []).filter((r) => !PORTAL_ROUTES.includes(r) && !PUBLIC_ROUTES.includes(r) && !SELLER_ROUTES.includes(r) && !r.startsWith('/seller'));
+  if (farmerWanted.length || extraPortal.length) {
+    if (!(await startDemoSession('farmer'))) {
+      console.log('Demo session unavailable; skipping portal routes.');
+    } else {
+      console.log(`Portal routes (${farmerWanted.length + extraPortal.length})`);
+      for (const route of [...farmerWanted, ...extraPortal]) await visit(route, { expectPortal: true });
+    }
+  }
+
+  // Seller Central uses the same demo user with the seller portal active.
+  const sellerWanted = SELLER_ROUTES.filter((r) => !only || only.includes(r));
+  const extraSeller = (only || []).filter((r) => r.startsWith('/seller') && !SELLER_ROUTES.includes(r));
+  if (sellerWanted.length || extraSeller.length) {
+    if (!(await startDemoSession('seller'))) {
+      console.log('Seller demo session unavailable; skipping seller routes.');
+    } else {
+      console.log(`Seller routes (${sellerWanted.length + extraSeller.length})`);
+      for (const route of [...sellerWanted, ...extraSeller]) await visit(route, { expectPortal: true });
+    }
+  }
+}
+
+if (scriptPath) {
+  console.log(`Running script ${path.relative(root, scriptPath)}`);
+  const mod = await import(pathToFileURL(scriptPath).href);
+  await mod.default({ window, navigate, text, waitFor, sleep, apiFetch, visit, startDemoSession, failures, consoleErrors });
 }
 
 await rm(outDir, { recursive: true, force: true });

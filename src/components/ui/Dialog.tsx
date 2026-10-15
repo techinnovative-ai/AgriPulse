@@ -53,9 +53,11 @@ export const Dialog: React.FC<DialogProps> = ({ open, onClose, title, descriptio
     document.addEventListener('keydown', onKeyDown);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    document.body.classList.add('ap-dialog-open');
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
+      document.body.classList.remove('ap-dialog-open');
       previouslyFocused?.focus?.();
     };
   }, [open, onClose]);

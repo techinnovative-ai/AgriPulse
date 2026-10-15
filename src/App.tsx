@@ -27,11 +27,17 @@ import { CropHealthPage } from './pages/CropHealthPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PublicLayout } from './components/public/PublicLayout';
+import { SellerShell } from './components/SellerShell';
 import { PortalType } from './types';
 import { RouteFallback } from './components/ui';
 
 /* Route-level code splitting: knowledge, market, seller and public-site pages load on demand. */
-const SellerPortalPage = lazy(() => import('./pages/SellerPortalPage').then((m) => ({ default: m.SellerPortalPage })));
+const SellerDashboardPage = lazy(() => import('./pages/seller/SellerDashboardPage'));
+const SellerOrdersPage = lazy(() => import('./pages/seller/SellerOrdersPage'));
+const SellerCatalogPage = lazy(() => import('./pages/seller/SellerCatalogPage'));
+const SellerPayoutsPage = lazy(() => import('./pages/seller/SellerPayoutsPage'));
+const SellerReportsPage = lazy(() => import('./pages/seller/SellerReportsPage'));
+const SellerSettingsPage = lazy(() => import('./pages/seller/SellerSettingsPage'));
 const DictionaryPage = lazy(() => import('./pages/DictionaryPage').then((m) => ({ default: m.DictionaryPage })));
 const DiseaseAnalysisPage = lazy(() => import('./pages/DiseaseAnalysisPage').then((m) => ({ default: m.DiseaseAnalysisPage })));
 const StorePage = lazy(() => import('./pages/StorePage').then((m) => ({ default: m.StorePage })));
@@ -133,23 +139,23 @@ export const App: React.FC = () => {
           <Route path="/portal" element={<PortalEntryRedirect />} />
           <Route path="/dashboard" element={<PortalEntryRedirect />} />
 
-          {/* Dedicated Seller Portal */}
+          {/* Seller Central — same shell as the Farmer Portal, seller navigation */}
           <Route
             path="/seller"
             element={
               <ProtectedRouteGuard portal="seller">
-                <SellerPortalPage />
+                <SellerShell />
               </ProtectedRouteGuard>
             }
-          />
-          <Route
-            path="/seller/dashboard"
-            element={
-              <ProtectedRouteGuard portal="seller">
-                <SellerPortalPage />
-              </ProtectedRouteGuard>
-            }
-          />
+          >
+            <Route index element={<SellerDashboardPage />} />
+            <Route path="dashboard" element={<Navigate to="/seller" replace />} />
+            <Route path="orders" element={<SellerOrdersPage />} />
+            <Route path="catalog" element={<SellerCatalogPage />} />
+            <Route path="payouts" element={<SellerPayoutsPage />} />
+            <Route path="reports" element={<SellerReportsPage />} />
+            <Route path="settings" element={<SellerSettingsPage />} />
+          </Route>
 
           {/* Protected Farmer Portal Routes */}
           <Route
